@@ -5,16 +5,25 @@ import (
 	"net/http"
 )
 
+// The contract of being a chain.
 type Chain interface {
+	// Moves the chain to and executes the next callback.
+	// If no other callbacks are defined, the request is dispatched out.
 	Proceed(*http.Request) (*http.Response, error)
+	// Returns the request to be sent out.
 	Request() *http.Request
+	// Returns the request's context.
 	Context() context.Context
 }
 
+// Observes, modifies, and potentially short-ciruits requests going out and the corresponding
+// responses coming back in. Typically callbacks add, remove or transport headers on the request
+// or response.
 type Callback interface {
 	Call(Chain) (*http.Response, error)
 }
 
+// Callback adapter function to wrap functions that accept a chain.
 type CallbackFunc func(Chain) (*http.Response, error)
 
 func (cb CallbackFunc) Call(ch Chain) (*http.Response, error) {
@@ -55,6 +64,8 @@ type roundtripper struct {
 	callbacks []Callback
 }
 
+// Called by the http client to initiate the request.
+// A chain is initialized and kicked off with the provided request.
 func (rt *roundtripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	ch := &chain{
 		index:     0,
@@ -65,10 +76,13 @@ func (rt *roundtripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	return ch.Proceed(req)
 }
 
+// Returns a RoundTripper with n arity of callbacks passed in.
+// http.DefaultTransport is used as the default RoundTripper.
 func Transport(callbacks ...Callback) http.RoundTripper {
 	return WithTransport(http.DefaultTransport, callbacks...)
 }
 
+// Returns a wrapped RoundTripper with the provided transport, and n arity of callbacks.
 func WithTransport(rt http.RoundTripper, callbacks ...Callback) http.RoundTripper {
 	return &roundtripper{
 		transport: rt,
